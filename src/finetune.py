@@ -48,7 +48,8 @@ logger = get_logger(__name__)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Finetune a transformers model on a causal language modeling task")
+    parser = argparse.ArgumentParser(
+        description="Finetune a transformers model on a causal language modeling task")
     parser.add_argument(
         "--dataset_name",
         type=str,
@@ -133,8 +134,10 @@ def parse_args():
         default=5e-5,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
-    parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay to use.")
-    parser.add_argument("--num_train_epochs", type=int, default=3, help="Total number of training epochs to perform.")
+    parser.add_argument("--weight_decay", type=float,
+                        default=0.0, help="Weight decay to use.")
+    parser.add_argument("--num_train_epochs", type=int, default=3,
+                        help="Total number of training epochs to perform.")
     parser.add_argument(
         "--max_train_steps",
         type=int,
@@ -152,13 +155,16 @@ def parse_args():
         type=SchedulerType,
         default="linear",
         help="The scheduler type to use.",
-        choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
+        choices=["linear", "cosine", "cosine_with_restarts",
+                 "polynomial", "constant", "constant_with_warmup"],
     )
     parser.add_argument(
         "--warmup_ratio", type=float, default=0, help="Ratio of total training steps used for warmup."
     )
-    parser.add_argument("--output_dir", type=str, default=None, help="Where to store the final model.")
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument("--output_dir", type=str, default=None,
+                        help="Where to store the final model.")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="A seed for reproducible training.")
     parser.add_argument(
         "--preprocessing_num_workers",
         type=int,
@@ -278,7 +284,20 @@ def parse_args():
         type=float,
         default=None,
         help='The alpha parameter for NEFTune.',
+    ),
+    parser.add_argument(
+        "--lora_target",
+        type=str,
+        default="q_proj,v_proj",
+        help="Comma-separated list of target modules for LoRA (e.g. 'q_proj,v_proj')",
+    ),
+    parser.add_argument(
+        "--run_name",
+        type=str,
+        default=None,
+        help="A name for this run (e.g. for wandb or tensorboard tracking)."
     )
+
     args = parser.parse_args()
 
     # Sanity checks
@@ -287,7 +306,8 @@ def parse_args():
     else:
         if args.train_file is not None and not args.apply_kl_div_loss:
             extension = args.train_file.split(".")[-1]
-            assert extension in ["json", "jsonl"], "`train_file` should be a json/jsonl file."
+            assert extension in [
+                "json", "jsonl"], "`train_file` should be a json/jsonl file."
     return args
 
 
@@ -303,10 +323,12 @@ def encode_with_prompt_completion_format(example, tokenizer, max_seq_length, use
     else:
         example_text = example['prompt'] + example['completion']
     example_text = example_text + tokenizer.eos_token
-    tokenized_example = tokenizer(example_text, return_tensors='pt', max_length=max_seq_length, truncation=True)
+    tokenized_example = tokenizer(
+        example_text, return_tensors='pt', max_length=max_seq_length, truncation=True)
     input_ids = tokenized_example.input_ids
     labels = input_ids.clone()
-    tokenized_prompt = tokenizer(example['prompt'], return_tensors='pt', max_length=max_seq_length, truncation=True)
+    tokenized_prompt = tokenizer(
+        example['prompt'], return_tensors='pt', max_length=max_seq_length, truncation=True)
     # mask the prompt part for avoiding loss
     if not use_lm_loss:
         labels[:, :tokenized_prompt.input_ids.shape[1]] = -100
@@ -326,22 +348,26 @@ def encode_with_messages_format(example, tokenizer, max_seq_length, use_lm_loss=
     messages = example['messages']
     if len(messages) == 0:
         raise ValueError('messages field is empty.')
-    
+
     def _concat_messages(messages):
         message_text = ""
         for message in messages:
             if message["role"] == "system":
-                message_text += "<|system|>\n" + message["content"].strip() + "\n"
+                message_text += "<|system|>\n" + \
+                    message["content"].strip() + "\n"
             elif message["role"] == "user":
-                message_text += "<|user|>\n" + message["content"].strip() + "\n"
+                message_text += "<|user|>\n" + \
+                    message["content"].strip() + "\n"
             elif message["role"] == "assistant":
-                message_text += "<|assistant|>\n" + message["content"].strip() + tokenizer.eos_token + "\n"
+                message_text += "<|assistant|>\n" + \
+                    message["content"].strip() + tokenizer.eos_token + "\n"
             else:
                 raise ValueError("Invalid role: {}".format(message["role"]))
         return message_text
-        
+
     example_text = _concat_messages(messages).strip()
-    tokenized_example = tokenizer(example_text, return_tensors='pt', max_length=max_seq_length, truncation=True)
+    tokenized_example = tokenizer(
+        example_text, return_tensors='pt', max_length=max_seq_length, truncation=True)
     input_ids = tokenized_example.input_ids
     labels = input_ids.clone()
 
@@ -349,7 +375,8 @@ def encode_with_messages_format(example, tokenizer, max_seq_length, use_lm_loss=
         # mask the special tokens for avoiding loss
         # here we aovid loss when tokens are <|assistant|>\n, <|system|>\n, or <|user|>\n.
         for special_token in ["wa\n", "<|system|>\n", "<|user|>\n"]:
-            special_token_ids = tokenizer(special_token, return_tensors='pt', max_length=max_seq_length, truncation=True).input_ids
+            special_token_ids = tokenizer(
+                special_token, return_tensors='pt', max_length=max_seq_length, truncation=True).input_ids
             length_special_token = special_token_ids.shape[1]
             for idx in range(input_ids.shape[1] - length_special_token + 1):
                 if torch.equal(input_ids[:, idx:idx+length_special_token], special_token_ids):
@@ -366,17 +393,19 @@ def encode_with_messages_format(example, tokenizer, max_seq_length, use_lm_loss=
                     ).input_ids.shape[1]
                 if message_idx < len(messages) - 1 and messages[message_idx+1]["role"] == "assistant":
                     # here we also ignore the role of the assistant
-                    messages_so_far = _concat_messages(messages[:message_idx+1]) + "<|assistant|>\n"
+                    messages_so_far = _concat_messages(
+                        messages[:message_idx+1]) + "<|assistant|>\n"
                 else:
-                    messages_so_far = _concat_messages(messages[:message_idx+1])
+                    messages_so_far = _concat_messages(
+                        messages[:message_idx+1])
                 message_end_idx = tokenizer(
                     messages_so_far,
-                    return_tensors='pt', 
-                    max_length=max_seq_length, 
+                    return_tensors='pt',
+                    max_length=max_seq_length,
                     truncation=True
                 ).input_ids.shape[1]
                 labels[:, message_start_idx:message_end_idx] = -100
-                
+
                 if message_end_idx >= max_seq_length:
                     break
 
@@ -393,14 +422,15 @@ def group_texts(examples, block_size):
     # Convert examples from tensor to list of lists.
     # examples = {k: [e.tolist() for e in v] for k, v in examples.items()}
     # Concatenate all texts.
-    concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+    concatenated_examples = {
+        k: list(chain(*examples[k])) for k in examples.keys()}
     total_length = len(concatenated_examples[list(examples.keys())[0]])
     # We drop the small remainder, and if the total_length < block_size  we exclude this batch and return an empty dict.
     # We could add padding if the model supported it instead of this drop, you can customize this part to your needs.
     total_length = (total_length // block_size) * block_size
     # Split by chunks of max_len.
     result = {
-        k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
+        k: [t[i: i + block_size] for i in range(0, total_length, block_size)]
         for k, t in concatenated_examples.items()
     }
     # result["labels"] = result["input_ids"].copy()
@@ -414,7 +444,7 @@ def save_with_accelerate(accelerator, model, tokenizer, output_dir, args):
     # Also, accelerator needs to use the wrapped model to get the state_dict.
     state_dict = accelerator.get_state_dict(model)
     if args.use_lora:
-        # When using lora, the unwrapped model is a PeftModel, which doesn't support the is_main_process 
+        # When using lora, the unwrapped model is a PeftModel, which doesn't support the is_main_process
         # and has its own save_pretrained function for only saving lora modules.
         # We have to manually specify the is_main_process outside the save_pretrained function.
         if accelerator.is_main_process:
@@ -437,7 +467,8 @@ def main():
         accelerator_log_kwargs["log_with"] = args.report_to
         accelerator_log_kwargs["project_dir"] = args.output_dir
 
-    accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps, **accelerator_log_kwargs)
+    accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps, **accelerator_log_kwargs)
     # Make one log on every process with the configuration for debugging.
     if args.output_dir is not None:
         os.makedirs(args.output_dir, exist_ok=True)
@@ -446,7 +477,8 @@ def main():
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
-        handlers=[logging.FileHandler(os.path.join(args.output_dir, 'output.log'), mode='w')]
+        handlers=[logging.FileHandler(os.path.join(
+            args.output_dir, 'output.log'), mode='w')]
     )
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
@@ -464,7 +496,7 @@ def main():
     # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)
-    
+
     accelerator.wait_for_everyone()
 
     if args.dataset_name is not None:
@@ -498,9 +530,11 @@ def main():
         )
 
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=not args.use_slow_tokenizer)
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.tokenizer_name, use_fast=not args.use_slow_tokenizer)
     elif args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=not args.use_slow_tokenizer)
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model_name_or_path, use_fast=not args.use_slow_tokenizer)
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
@@ -516,7 +550,7 @@ def main():
                 bnb_4bit_compute_dtype=torch.bfloat16,
             )
             device_index = accelerator.local_process_index
-            device_map = {"": device_index} # force data-parallel training.
+            device_map = {"": device_index}  # force data-parallel training.
             model = AutoModelForCausalLM.from_pretrained(
                 args.model_name_or_path,
                 from_tf=bool(".ckpt" in args.model_name_or_path),
@@ -541,12 +575,15 @@ def main():
 
     if args.use_lm_modelling:
         logger.info("Training with LM modelling loss.")
-        logger.info("Here we concatenate all instruction tuning examples for SFT training.")
-        logger.info("We do not add any special tokens, as we mimic what the model was trained during pretraining.")
+        logger.info(
+            "Here we concatenate all instruction tuning examples for SFT training.")
+        logger.info(
+            "We do not add any special tokens, as we mimic what the model was trained during pretraining.")
     else:
         # no default pad token for llama!
         # here we add all special tokens again, because the default ones are not in the special_tokens_map
-        logger.info("Training with regular instruction tuning using special tokens.")
+        logger.info(
+            "Training with regular instruction tuning using special tokens.")
         logger.info("Adding special tokens to the tokenizer.")
         if isinstance(tokenizer, LlamaTokenizer) or isinstance(tokenizer, LlamaTokenizerFast):
             num_added_tokens = tokenizer.add_special_tokens({
@@ -555,17 +592,20 @@ def main():
                 "unk_token": "<unk>",
                 "pad_token": "<pad>",
             })
-            assert num_added_tokens in [0, 1], "LlamaTokenizer should only add one special token - the pad_token, or no tokens if pad token present."
+            assert num_added_tokens in [
+                0, 1], "LlamaTokenizer should only add one special token - the pad_token, or no tokens if pad token present."
         elif isinstance(tokenizer, GPTNeoXTokenizerFast):
             num_added_tokens = tokenizer.add_special_tokens({
                 "pad_token": "<pad>",
             })
             assert num_added_tokens == 1, "GPTNeoXTokenizer should only add one special token - the pad_token."
         elif isinstance(tokenizer, GPT2Tokenizer) and isinstance(model, OPTForCausalLM):
-            num_added_tokens = tokenizer.add_special_tokens({'unk_token': '<unk>'})
+            num_added_tokens = tokenizer.add_special_tokens(
+                {'unk_token': '<unk>'})
 
     if args.padding_side is not None:
-        assert args.padding_side in ["left", "right"], "Padding side should be either 'left' or 'right'."
+        assert args.padding_side in [
+            "left", "right"], "Padding side should be either 'left' or 'right'."
         tokenizer.padding_side = args.padding_side
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
@@ -576,16 +616,18 @@ def main():
 
     if args.use_lora:
         if args.use_qlora:
-            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=args.gradient_checkpointing)
+            model = prepare_model_for_kbit_training(
+                model, use_gradient_checkpointing=args.gradient_checkpointing)
 
         logger.info("Initializing LORA model...")
         peft_config = LoraConfig(
-            task_type=TaskType.CAUSAL_LM, 
-            inference_mode=False, 
-            r=args.lora_rank, 
-            lora_alpha=args.lora_alpha, 
+            task_type=TaskType.CAUSAL_LM,
+            inference_mode=False,
+            r=args.lora_rank,
+            lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
-            target_modules=["q_proj", "o_proj", "v_proj", "k_proj", "gate_proj", "up_proj", "down_proj"]
+            target_modules=["q_proj", "o_proj", "v_proj",
+                            "k_proj", "gate_proj", "up_proj", "down_proj"]
         )
         model = get_peft_model(model, peft_config)
         model.print_trainable_parameters()
@@ -607,8 +649,10 @@ def main():
                 use_lm_loss=args.use_lm_loss,
             )
         else:
-            raise ValueError("You need to have either 'prompt'&'completion' or 'messages' in your column names.")
-        logger.info("Whether use LM loss to train SFT: {}".format(args.use_lm_loss))
+            raise ValueError(
+                "You need to have either 'prompt'&'completion' or 'messages' in your column names.")
+        logger.info(
+            "Whether use LM loss to train SFT: {}".format(args.use_lm_loss))
 
         with accelerator.main_process_first():
             lm_datasets = raw_datasets.map(
@@ -616,13 +660,17 @@ def main():
                 batched=False,
                 num_proc=args.preprocessing_num_workers,
                 load_from_cache_file=not args.overwrite_cache,
-                remove_columns=[name for name in raw_datasets["train"].column_names if name not in ["input_ids", "labels", "attention_mask"]],
+                remove_columns=[name for name in raw_datasets["train"].column_names if name not in [
+                    "input_ids", "labels", "attention_mask"]],
                 desc="Tokenizing and reformatting instruction data",
             )
             lm_datasets.set_format(type="pt")
-            logger.info("The number of examples in the training dataset: {}".format(len(lm_datasets['train'])))
-            lm_datasets = lm_datasets.filter(lambda example: (example['labels'] != -100).any())
-            logger.info("The number of examples in the training dataset after filtering: {}".format(len(lm_datasets['train'])))
+            logger.info("The number of examples in the training dataset: {}".format(
+                len(lm_datasets['train'])))
+            lm_datasets = lm_datasets.filter(
+                lambda example: (example['labels'] != -100).any())
+            logger.info("The number of examples in the training dataset after filtering: {}".format(
+                len(lm_datasets['train'])))
 
         if hasattr(config, "max_position_embeddings"):
             max_pos_embeddings = config.max_position_embeddings
@@ -646,7 +694,8 @@ def main():
                     )
                 block_size = min(args.block_size, args.max_seq_length)
 
-            logger.info("Concatenate all instruction tuning examples for SFT training.")
+            logger.info(
+                "Concatenate all instruction tuning examples for SFT training.")
             with accelerator.main_process_first():
                 # Note that with `batched=True`, this map processes 1,000 texts together, so group_texts throws away a remainder
                 # for each of those groups of 1,000 texts. You can adjust that batch_size here but a higher value might be slower
@@ -661,7 +710,8 @@ def main():
                     batch_size = 5305
                 else:
                     batch_size = 1000
-                logger.info(f"The number of examples in the training dataset: {len(lm_datasets['train'])}")
+                logger.info(
+                    f"The number of examples in the training dataset: {len(lm_datasets['train'])}")
                 logger.info(f"Batch size for grouping texts: {batch_size}")
 
                 lm_datasets = lm_datasets.map(
@@ -670,7 +720,8 @@ def main():
                     batch_size=batch_size,
                     num_proc=args.preprocessing_num_workers,
                     load_from_cache_file=not args.overwrite_cache,
-                    remove_columns=[name for name in lm_datasets["train"].column_names if name not in ["input_ids", "labels", "attention_mask"]],
+                    remove_columns=[name for name in lm_datasets["train"].column_names if name not in [
+                        "input_ids", "labels", "attention_mask"]],
                     desc=f"Grouping texts in chunks of {args.block_size}",
                 )
 
@@ -678,22 +729,24 @@ def main():
 
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_dataset)), 3):
-        logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
+        logger.info(
+            f"Sample {index} of the training set: {train_dataset[index]}.")
 
     if args.use_lm_modelling:
         # DataLoaders creation:
         train_dataloader = DataLoader(
-            train_dataset, 
-            shuffle=True, 
+            train_dataset,
+            shuffle=True,
             collate_fn=default_data_collator,
             batch_size=args.per_device_train_batch_size
         )
     else:
         # DataLoaders creation:
         train_dataloader = DataLoader(
-            train_dataset, 
-            shuffle=True, 
-            collate_fn=DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model, padding="longest"),
+            train_dataset,
+            shuffle=True,
+            collate_fn=DataCollatorForSeq2Seq(
+                tokenizer=tokenizer, model=model, padding="longest"),
             batch_size=args.per_device_train_batch_size
         )
 
@@ -719,41 +772,47 @@ def main():
             is_paged=True
         )
     else:
-        optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
+        optimizer = torch.optim.AdamW(
+            optimizer_grouped_parameters, lr=args.learning_rate)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
 
     # Create the learning rate scheduler.
-    # Note: the current accelerator.step() calls the .step() of the real scheduler for the `num_processes` times. This is because they assume 
+    # Note: the current accelerator.step() calls the .step() of the real scheduler for the `num_processes` times. This is because they assume
     # the user initialize the scheduler with the entire training set. In the case of data parallel training, each process only
-    # sees a subset (1/num_processes) of the training set. So each time the process needs to update the lr multiple times so that the total 
+    # sees a subset (1/num_processes) of the training set. So each time the process needs to update the lr multiple times so that the total
     # number of updates in the end matches the num_training_steps here.
-    # Here we need to set the num_training_steps to either using the entire training set (when epochs is specified) or we need to multiply the 
+    # Here we need to set the num_training_steps to either using the entire training set (when epochs is specified) or we need to multiply the
     # num_training_steps by num_processes so that the total number of updates matches the num_training_steps.
-    num_training_steps_for_scheduler = args.max_train_steps if overrode_max_train_steps else args.max_train_steps * accelerator.num_processes
+    num_training_steps_for_scheduler = args.max_train_steps if overrode_max_train_steps else args.max_train_steps * \
+        accelerator.num_processes
     lr_scheduler = get_scheduler(
         name=args.lr_scheduler_type,
         optimizer=optimizer,
         num_training_steps=num_training_steps_for_scheduler,
-        num_warmup_steps=int(num_training_steps_for_scheduler * args.warmup_ratio),
+        num_warmup_steps=int(
+            num_training_steps_for_scheduler * args.warmup_ratio),
     )
 
     # Prepare everything with `accelerator`.
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-                model, optimizer, train_dataloader, lr_scheduler
-            )
+        model, optimizer, train_dataloader, lr_scheduler
+    )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
-    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+    args.num_train_epochs = math.ceil(
+        args.max_train_steps / num_update_steps_per_epoch)
 
     # Figure out how many steps we should save the Accelerator states
     checkpointing_steps = args.checkpointing_steps
@@ -766,20 +825,30 @@ def main():
         experiment_config = vars(args)
         # TensorBoard cannot log Enums, need the raw value
         experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
-        accelerator.init_trackers("open_instruct", experiment_config)
+        accelerator.init_trackers(
+            project_name="open_instruct",
+            config=experiment_config,
+            init_kwargs={"wandb": {"name": args.run_name}
+                         } if args.run_name and args.report_to == "wandb" else None
+        )
 
     # Train!
-    total_batch_size = args.per_device_train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = args.per_device_train_batch_size * \
+        accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
-    logger.info(f"  Instantaneous batch size per device = {args.per_device_train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+    logger.info(
+        f"  Instantaneous batch size per device = {args.per_device_train_batch_size}")
+    logger.info(
+        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.info(
+        f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(range(args.max_train_steps),
+                        disable=not accelerator.is_local_main_process)
     completed_steps = 0
     starting_epoch = 0
 
@@ -821,10 +890,11 @@ def main():
     progress_bar.update(completed_steps)
 
     if args.neftune_alpha is not None:
-        unwrapped_model = unwrap_model(model)                  
+        unwrapped_model = unwrap_model(model)
         embeddings = unwrapped_model.get_input_embeddings()
         hook_handle = embeddings.register_forward_hook(
-            partial(neftune_post_forward_hook, neftune_noise_alpha=args.neftune_alpha),
+            partial(neftune_post_forward_hook,
+                    neftune_noise_alpha=args.neftune_alpha),
         )
 
     for epoch in range(starting_epoch, args.num_train_epochs):
@@ -847,7 +917,7 @@ def main():
                 if args.apply_kl_div_loss:
                     ref_outputs_probs = batch.pop("ref_model_logits")
 
-                outputs = model(**batch, use_cache=False)                
+                outputs = model(**batch, use_cache=False)
                 loss = outputs.loss
 
                 if args.apply_kl_div_loss:
@@ -865,18 +935,21 @@ def main():
                 accelerator.backward(loss)
                 # clip gradient norm. don't do this with deepspeed
                 if accelerator.sync_gradients and args.clip_grad_norm > 0:
-                    accelerator.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
+                    accelerator.clip_grad_norm_(
+                        model.parameters(), args.clip_grad_norm)
                 optimizer.step()
                 optimizer.zero_grad()
-                lr_scheduler.step()       
+                lr_scheduler.step()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 completed_steps += 1
                 if args.logging_steps and completed_steps % args.logging_steps == 0:
-                    avg_loss = accelerator.gather(total_loss).mean().item() / args.gradient_accumulation_steps / args.logging_steps
-                    logger.info(f"  Step: {completed_steps}, LR: {lr_scheduler.get_last_lr()[0]}, Loss: {avg_loss}")
+                    avg_loss = accelerator.gather(total_loss).mean().item(
+                    ) / args.gradient_accumulation_steps / args.logging_steps
+                    logger.info(
+                        f"  Step: {completed_steps}, LR: {lr_scheduler.get_last_lr()[0]}, Loss: {avg_loss}")
                     if args.with_tracking:
                         accelerator.log(
                             {
@@ -886,13 +959,15 @@ def main():
                             step=completed_steps,
                         )
                     total_loss = 0
-                    
+
                 if isinstance(checkpointing_steps, int):
                     if completed_steps % checkpointing_steps == 0:
                         output_dir = f"step_{completed_steps}"
                         if args.output_dir is not None:
-                            output_dir = os.path.join(args.output_dir, output_dir)
-                        save_with_accelerate(accelerator, model, tokenizer, output_dir, args)
+                            output_dir = os.path.join(
+                                args.output_dir, output_dir)
+                        save_with_accelerate(
+                            accelerator, model, tokenizer, output_dir, args)
 
                 if completed_steps >= args.max_train_steps:
                     break
@@ -901,7 +976,8 @@ def main():
             output_dir = f"epoch_{epoch}"
             if args.output_dir is not None:
                 output_dir = os.path.join(args.output_dir, output_dir)
-            save_with_accelerate(accelerator, model, tokenizer, output_dir, args)
+            save_with_accelerate(accelerator, model,
+                                 tokenizer, output_dir, args)
 
     if args.neftune_alpha is not None:
         hook_handle.remove()
@@ -913,7 +989,12 @@ def main():
         accelerator.wait_for_everyone()
         if accelerator.is_main_process:
             tokenizer.save_pretrained(args.output_dir)
-        save_with_accelerate(accelerator, model, tokenizer, args.output_dir, args)
+        save_with_accelerate(accelerator, model, tokenizer,
+                             args.output_dir, args)
+    if args.use_lora:
+        target_modules = args.lora_target.split(",") if args.lora_target else [
+            "q_proj", "v_proj"]
+        model = prepare_model_for_lora(model, target_modules, args)
 
 
 if __name__ == "__main__":
