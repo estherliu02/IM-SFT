@@ -569,6 +569,9 @@ def main():
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
 
     if args.model_name_or_path:
         if args.use_qlora:
@@ -601,6 +604,10 @@ def main():
     else:
         logger.info("Training new model from scratch")
         model = AutoModelForCausalLM.from_config(config)
+
+        
+    if args.use_flash_attn:
+        model.to("cuda")  # Explicitly move the model if needed
 
     if args.use_lm_modelling:
         logger.info("Training with LM modelling loss.")
@@ -941,34 +948,34 @@ def main():
         else:
             active_dataloader = train_dataloader
         for step, batch in enumerate(active_dataloader):
-            with accelerator.accumulate(model):
+            # with accelerator.accumulate(model):
 
-                if args.apply_kl_div_loss:
-                    ref_outputs_probs = batch.pop("ref_model_logits")
+            if args.apply_kl_div_loss:
+                ref_outputs_probs = batch.pop("ref_model_logits")
 
-                outputs = model(**batch, use_cache=False)
-                loss = outputs.loss
+            outputs = model(**batch, use_cache=False)
+            loss = outputs.loss
 
-                if args.apply_kl_div_loss:
-                    kl_loss = compute_kl_divergence_loss_target_token(
-                        output_logits=outputs.logits,
-                        ref_logprobs=ref_outputs_probs,
-                        input_ids=batch["input_ids"],
-                        labels=batch["labels"],
-                    )
-                    loss += args.kl_penalty_ctl * kl_loss
+            if args.apply_kl_div_loss:
+                kl_loss = compute_kl_divergence_loss_target_token(
+                    output_logits=outputs.logits,
+                    ref_logprobs=ref_outputs_probs,
+                    input_ids=batch["input_ids"],
+                    labels=batch["labels"],
+                )
+                loss += args.kl_penalty_ctl * kl_loss
 
-                # We keep track of the loss at each logged step
-                total_loss += loss.detach().float()
+            # We keep track of the loss at each logged step
+            total_loss += loss.detach().float()
 
-                accelerator.backward(loss)
-                # clip gradient norm. don't do this with deepspeed
-                if accelerator.sync_gradients and args.clip_grad_norm > 0:
-                    accelerator.clip_grad_norm_(
-                        model.parameters(), args.clip_grad_norm)
-                optimizer.step()
-                optimizer.zero_grad()
-                lr_scheduler.step()
+            accelerator.backward(loss)
+            # clip gradient norm. don't do this with deepspeed
+            if accelerator.sync_gradients and args.clip_grad_norm > 0:
+                accelerator.clip_grad_norm_(
+                    model.parameters(), args.clip_grad_norm)
+            optimizer.step()
+            optimizer.zero_grad()
+            lr_scheduler.step()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:

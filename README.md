@@ -27,3 +27,39 @@ export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9"
 
 python setup.py install
 
+
+accelerate launch \
+  --mixed_precision bf16 \
+  --num_machines 1 \
+  --num_processes 2 \
+  --use_deepspeed \
+  --deepspeed_config_file ds_configs/stage3_no_offloading_accelerate.conf \
+  src/finetune.py \
+  --model_name_or_path meta-llama/Llama-3.1-8B-Instruct \
+  --tokenizer_name meta-llama/Llama-3.1-8B-Instruct \
+  --use_flash_attn \
+  --train_file data/silverpairs_prompt_completion.jsonl \
+  --max_seq_length 2048 \
+  --preprocessing_num_workers 16 \
+  --per_device_train_batch_size 1 \
+  --gradient_accumulation_steps 8 \
+  --learning_rate 1e-4 \
+  --lr_scheduler_type cosine \
+  --warmup_ratio 0.05 \
+  --weight_decay 0.0 \
+  --checkpointing_steps epoch \
+  --num_train_epochs 6 \
+  --output_dir output/llama3-8b_im_sft \
+  --use_lora \
+  --lora_rank 8 \
+  --lora_alpha 32 \
+  --lora_dropout 0.05 \
+  --lora_target q_proj,v_proj \
+  --with_tracking \
+  --report_to wandb \
+  --logging_steps 1 \
+  --use_lm_loss \
+  --rope_scaling_type linear \
+  --rope_scaling_factor 2.0 \
+  --run_name llama3-8b-im \
+  > output/llama3-8b-im.log 2>&1
