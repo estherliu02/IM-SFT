@@ -10,4 +10,11 @@ source ~/.bashrc
 
 conda create -n sft python=3.10
 conda activate sft
+pip install torch==2.1.0
 pip install -r requirements.txt
+
+pip uninstall flash-attn -y 
+pip install packaging ninja
+git clone https://github.com/Dao-AILab/flash-attention.git
+cd flash-attention
+pip install .
