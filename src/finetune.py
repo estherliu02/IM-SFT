@@ -8,6 +8,7 @@ import os
 import random
 import datasets
 import torch
+import json
 from functools import partial
 from itertools import chain
 from accelerate import Accelerator
@@ -17,6 +18,8 @@ from datasets import load_dataset, load_from_disk
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import LlamaForCausalLM
+from transformers import LlamaConfig
+from huggingface_hub import hf_hub_download
 import transformers
 from transformers import (
     AutoConfig,
@@ -296,7 +299,19 @@ def parse_args():
         type=str,
         default=None,
         help="A name for this run (e.g. for wandb or tensorboard tracking)."
+    ),
+    parser.add_argument(
+        "--rope_scaling_type",
+        type=str,
+        choices=["linear", "dynamic"],
+        help="Type of rope scaling to use if overriding default config."
+    ),
+    parser.add_argument(
+        "--rope_scaling_factor",
+        type=float,
+        help="Factor to apply if overriding rope scaling config."
     )
+
 
     args = parser.parse_args()
 
@@ -519,15 +534,29 @@ def main():
                 **dataset_args,
             )
 
-    # Load pretrained model and tokenizer
+    
+    # Load config dict
     if args.config_name:
-        config = AutoConfig.from_pretrained(args.config_name)
+        config_dict, _ = LlamaConfig.get_config_dict(args.config_name)
     elif args.model_name_or_path:
-        config = AutoConfig.from_pretrained(args.model_name_or_path)
+        config_dict, _ = LlamaConfig.get_config_dict(args.model_name_or_path)
     else:
-        raise ValueError(
-            "You are instantiating a new config instance from scratch. This is not supported by this script."
-        )
+        raise ValueError("Must specify --config_name or --model_name_or_path")
+
+    # Optional: show original rope_scaling
+    if "rope_scaling" in config_dict:
+        print("⚠️ Original rope_scaling in config:", config_dict["rope_scaling"])
+
+    # Patch rope_scaling
+    if args.rope_scaling_type and args.rope_scaling_factor:
+        config_dict["rope_scaling"] = {
+            "type": args.rope_scaling_type,
+            "factor": args.rope_scaling_factor,
+        }
+        print("✅ Patched rope_scaling:", config_dict["rope_scaling"])
+
+    # ✅ Must use LlamaConfig.from_dict()
+    config = LlamaConfig.from_dict(config_dict)
 
     if args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(
