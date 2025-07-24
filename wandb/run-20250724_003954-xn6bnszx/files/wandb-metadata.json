@@ -1,0 +1,99 @@
+{
+  "os":  "Linux-6.8.0-51-generic-x86_64-with-glibc2.35",
+  "python":  "CPython 3.10.18",
+  "startedAt":  "2025-07-24T00:39:54.052698Z",
+  "args":  [
+    "--model_name_or_path",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "--tokenizer_name",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "--use_flash_attn",
+    "--train_file",
+    "data/silverpairs_prompt_completion.jsonl",
+    "--max_seq_length",
+    "2048",
+    "--preprocessing_num_workers",
+    "16",
+    "--per_device_train_batch_size",
+    "1",
+    "--gradient_accumulation_steps",
+    "8",
+    "--learning_rate",
+    "1e-4",
+    "--lr_scheduler_type",
+    "cosine",
+    "--warmup_ratio",
+    "0.05",
+    "--weight_decay",
+    "0.0",
+    "--checkpointing_steps",
+    "50",
+    "--num_train_epochs",
+    "6",
+    "--output_dir",
+    "output/llama3-8b_im_sft",
+    "--use_lora",
+    "--lora_rank",
+    "8",
+    "--lora_alpha",
+    "32",
+    "--lora_dropout",
+    "0.05",
+    "--lora_target",
+    "q_proj,v_proj",
+    "--with_tracking",
+    "--report_to",
+    "wandb",
+    "--logging_steps",
+    "1",
+    "--use_lm_loss",
+    "--rope_scaling_type",
+    "linear",
+    "--rope_scaling_factor",
+    "2.0",
+    "--run_name",
+    "llama3-8b-im"
+  ],
+  "program":  "/workspace/IM-SFT/src/finetune.py",
+  "codePath":  "src/finetune.py",
+  "codePathLocal":  "src/finetune.py",
+  "git":  {
+    "remote":  "https://github.com/estherliu02/IM-SFT.git",
+    "commit":  "4139918dc4a70e2ba9bcc000e41ea4e620cce0a2"
+  },
+  "email":  "gefei021021@gmail.com",
+  "root":  "/workspace/IM-SFT",
+  "host":  "4f7eefb40635",
+  "executable":  "/venv/sft/bin/python3.10",
+  "cpu_count":  64,
+  "cpu_count_logical":  128,
+  "gpu":  "NVIDIA A100-SXM4-80GB",
+  "gpu_count":  2,
+  "disk":  {
+    "/":  {
+      "total":  "107374182400",
+      "used":  "52171796480"
+    }
+  },
+  "memory":  {
+    "total":  "540590526464"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA A100-SXM4-80GB",
+      "memoryTotal":  "85899345920",
+      "cudaCores":  6912,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-c3c887dc-b3aa-ec16-48a0-97c8a207982e"
+    },
+    {
+      "name":  "NVIDIA A100-SXM4-80GB",
+      "memoryTotal":  "85899345920",
+      "cudaCores":  6912,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-24e7b625-fc0b-445e-aa33-6bf454154fbf"
+    }
+  ],
+  "cudaVersion":  "12.8",
+  "writerId":  "c2puw32ickkbt9cd3udn6id8jabl4nco"
+}
