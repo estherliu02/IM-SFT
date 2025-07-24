@@ -47,7 +47,7 @@ accelerate launch \
   --lr_scheduler_type cosine \
   --warmup_ratio 0.05 \
   --weight_decay 0.0 \
-  --checkpointing_steps epoch \
+  --checkpointing_steps 50 \
   --num_train_epochs 6 \
   --output_dir output/llama3-8b_im_sft \
   --use_lora \
@@ -62,4 +62,4 @@ accelerate launch \
   --rope_scaling_type linear \
   --rope_scaling_factor 2.0 \
   --run_name llama3-8b-im \
-  > output/llama3-8b-im.log 2>&1
+> output/llama3-8b-im.log 2>&1

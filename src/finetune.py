@@ -458,12 +458,95 @@ def save_with_accelerate(accelerator, model, tokenizer, output_dir, args):
     # Otherwise, sometimes the model will be saved with only part of the parameters.
     # Also, accelerator needs to use the wrapped model to get the state_dict.
     state_dict = accelerator.get_state_dict(model)
+    
     if args.use_lora:
         # When using lora, the unwrapped model is a PeftModel, which doesn't support the is_main_process
         # and has its own save_pretrained function for only saving lora modules.
         # We have to manually specify the is_main_process outside the save_pretrained function.
         if accelerator.is_main_process:
-            unwrapped_model.save_pretrained(output_dir, state_dict=state_dict)
+            try:
+                # Try the standard PEFT save first
+                unwrapped_model.save_pretrained(output_dir, state_dict=state_dict)
+                print("✅ Successfully saved with standard PEFT method")
+            except Exception as e:
+                print(f"⚠️ Standard PEFT save failed: {e}")
+                print("🔧 Using manual LoRA save method...")
+                
+                # Manual save approach - extract LoRA weights directly
+                os.makedirs(output_dir, exist_ok=True)
+                
+                # Save adapter weights manually
+                adapter_state_dict = {}
+                for name, param in unwrapped_model.named_parameters():
+                    if 'lora_' in name:
+                        # Remove 'base_model.model.' prefix if present for cleaner naming
+                        clean_name = name.replace('base_model.model.', '') if 'base_model.model.' in name else name
+                        adapter_state_dict[clean_name] = param.detach().cpu()
+                
+                if adapter_state_dict:
+                    torch.save(adapter_state_dict, os.path.join(output_dir, "adapter_model.bin"))
+                    print(f"✅ Saved {len(adapter_state_dict)} LoRA parameters")
+                
+                # Create adapter_config.json manually
+                adapter_config = {
+                    "base_model_name_or_path": args.model_name_or_path,
+                    "bias": "none",
+                    "fan_in_fan_out": False,
+                    "inference_mode": False,
+                    "init_lora_weights": True,
+                    "layers_pattern": None,
+                    "layers_to_transform": None,
+                    "lora_alpha": args.lora_alpha,
+                    "lora_dropout": args.lora_dropout,
+                    "modules_to_save": None,
+                    "peft_type": "LORA", 
+                    "r": args.lora_rank,
+                    "revision": None,
+                    "target_modules": args.lora_target.split(",") if hasattr(args, 'lora_target') and args.lora_target else ["q_proj", "v_proj"],
+                    "task_type": "CAUSAL_LM"
+                }
+                
+                with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
+                    json.dump(adapter_config, f, indent=2)
+                print("✅ Created adapter_config.json")
+                
+                # Save a README file
+                readme_content = f"""---
+library_name: peft
+base_model: {args.model_name_or_path}
+---
+
+# LoRA Adapter
+
+This adapter was trained using LoRA (Low-Rank Adaptation) technique.
+
+## Model Details
+- Base model: {args.model_name_or_path}
+- LoRA rank: {args.lora_rank}
+- LoRA alpha: {args.lora_alpha}
+- Target modules: {args.lora_target if hasattr(args, 'lora_target') else 'q_proj,v_proj'}
+
+## Usage
+
+```python
+from peft import PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Load base model
+base_model = AutoModelForCausalLM.from_pretrained("{args.model_name_or_path}")
+
+# Load LoRA adapter
+model = PeftModel.from_pretrained(base_model, "{output_dir}")
+
+# Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained("{args.model_name_or_path}")
+```
+"""
+                with open(os.path.join(output_dir, "README.md"), "w") as f:
+                    f.write(readme_content)
+                print("✅ Created README.md")
+                
+                print("✅ Manual LoRA save completed successfully!")
     else:
         unwrapped_model.save_pretrained(
             output_dir, is_main_process=accelerator.is_main_process, save_function=accelerator.save, state_dict=state_dict
@@ -547,7 +630,19 @@ def main():
     if "rope_scaling" in config_dict:
         print("⚠️ Original rope_scaling in config:", config_dict["rope_scaling"])
 
-    # Patch rope_scaling
+    # Handle LLaMA 3.1 rope_scaling compatibility
+    if "rope_scaling" in config_dict and config_dict["rope_scaling"] is not None:
+        rope_scaling = config_dict["rope_scaling"]
+        if isinstance(rope_scaling, dict) and "rope_type" in rope_scaling:
+            # This is LLaMA 3.1 format, convert to compatible format for config creation
+            compatible_rope_scaling = {
+                "type": rope_scaling.get("rope_type", "default"),
+                "factor": rope_scaling.get("factor", 1.0)
+            }
+            config_dict["rope_scaling"] = compatible_rope_scaling
+            print("⚠️ Converted LLaMA 3.1 rope_scaling to compatible format for config loading")
+
+    # Patch rope_scaling if specified in arguments
     if args.rope_scaling_type and args.rope_scaling_factor:
         config_dict["rope_scaling"] = {
             "type": args.rope_scaling_type,
@@ -1027,10 +1122,6 @@ def main():
             tokenizer.save_pretrained(args.output_dir)
         save_with_accelerate(accelerator, model, tokenizer,
                              args.output_dir, args)
-    if args.use_lora:
-        target_modules = args.lora_target.split(",") if args.lora_target else [
-            "q_proj", "v_proj"]
-        model = prepare_model_for_lora(model, target_modules, args)
 
 
 if __name__ == "__main__":
