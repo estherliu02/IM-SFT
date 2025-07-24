@@ -10,7 +10,7 @@ source ~/.bashrc
 
 conda create -n sft python=3.10
 conda activate sft
-pip install torch==2.1.2+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install torch==2.2.0+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 pip install -r requirements.txt
 
@@ -27,6 +27,10 @@ export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9"
 
 python setup.py install
 
+huggingface-cli login --token MY_HF_TOKEN
+wandb login MY_WANDB_TOKEN
+
+rm -f /workspace/.hf_home/hub/tmp*
 
 accelerate launch \
   --mixed_precision bf16 \
@@ -39,7 +43,7 @@ accelerate launch \
   --tokenizer_name meta-llama/Llama-3.1-8B-Instruct \
   --use_flash_attn \
   --train_file data/silverpairs_prompt_completion.jsonl \
-  --max_seq_length 2048 \
+  --max_seq_length 42000 \
   --preprocessing_num_workers 16 \
   --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 8 \
