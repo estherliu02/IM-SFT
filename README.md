@@ -10,7 +10,7 @@ source ~/.bashrc
 
 conda create -n sft python=3.10
 conda activate sft
-pip install torch==2.2.0+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install torch==2.1.2+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 pip install -r requirements.txt
 
