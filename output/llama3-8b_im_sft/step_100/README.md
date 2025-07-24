@@ -28,3 +28,6 @@ model = PeftModel.from_pretrained(base_model, "output/llama3-8b_im_sft/step_100"
 # Load tokenizer
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
 ```
+### Framework versions
+
+- PEFT 0.15.2

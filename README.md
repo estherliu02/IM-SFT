@@ -14,6 +14,22 @@ pip install torch==2.1.2+cu121 torchvision torchaudio --index-url https://downlo
 
 pip install -r requirements2.txt
 
+
+
+
+
+pip uninstall flash-attn -y
+pip uninstall torch torchvision torchaudio -y
+
+# Reinstall PyTorch 2.1.2 with CUDA 12.1
+pip install torch==2.1.2+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+FLASH_ATTENTION_FORCE_BUILD=TRUE pip install flash-attn==2.2.2 --no-build-isolation
+
+
+
+
+
 pip uninstall flash-attn -y
 
 git clone https://github.com/Dao-AILab/flash-attention.git
@@ -37,14 +53,13 @@ accelerate launch \
   --num_machines 1 \
   --num_processes 2 \
   --use_deepspeed \
-  --deepspeed_config_file ds_configs/stage3_no_offloading_accelerate.conf \
+  --deepspeed_config_file ds_configs/stage3_offloading_accelerate.conf \
   src/finetune.py \
   --model_name_or_path meta-llama/Llama-3.1-8B-Instruct \
   --tokenizer_name meta-llama/Llama-3.1-8B-Instruct \
-  --use_flash_attn \
   --train_file data/silverpairs_prompt_completion.jsonl \
   --enable_liger_kernel \
-  --max_seq_length 42000 \
+  --max_seq_length 8000 \
   --preprocessing_num_workers 16 \
   --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 8 \

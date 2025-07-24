@@ -609,10 +609,13 @@ def main():
     # Log Liger kernel status
     if args.enable_liger_kernel:
         if LIGER_KERNEL_AVAILABLE:
+            print("🚀 LIGER KERNEL: Liger kernel is enabled and available")
             logger.info("🚀 Liger kernel is enabled and available")
         else:
+            print("❌ LIGER KERNEL: Liger kernel is requested but not available")
             logger.error("❌ Liger kernel is requested but not available")
     else:
+        print("⚡ LIGER KERNEL: Liger kernel is disabled")
         logger.info("⚡ Liger kernel is disabled")
     
     with open(os.path.join(args.output_dir, "finetune_args.txt"), "w") as f:
@@ -694,6 +697,41 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    # Apply Liger kernel optimizations BEFORE model loading
+    if args.enable_liger_kernel:
+        print("🚀 LIGER KERNEL: Applying Liger kernel optimizations...")
+        logger.info("🚀 Applying Liger kernel optimizations...")
+        try:
+            # Apply Liger kernel to the model based on model type
+            if "llama" in args.model_name_or_path.lower():
+                from liger_kernel.transformers import apply_liger_kernel_to_llama
+                apply_liger_kernel_to_llama()
+                print("✅ LIGER KERNEL: Liger kernel for LLaMA successfully applied")
+                logger.info("✅ Liger kernel for LLaMA successfully applied")
+            elif "mistral" in args.model_name_or_path.lower():
+                from liger_kernel.transformers import apply_liger_kernel_to_mistral
+                apply_liger_kernel_to_mistral()
+                print("✅ LIGER KERNEL: Liger kernel for Mistral successfully applied")
+                logger.info("✅ Liger kernel for Mistral successfully applied")
+            elif "gemma" in args.model_name_or_path.lower():
+                from liger_kernel.transformers import apply_liger_kernel_to_gemma
+                apply_liger_kernel_to_gemma()
+                print("✅ LIGER KERNEL: Liger kernel for Gemma successfully applied")
+                logger.info("✅ Liger kernel for Gemma successfully applied")
+            else:
+                # Try the general LLaMA kernel as fallback for similar architectures
+                from liger_kernel.transformers import apply_liger_kernel_to_llama
+                apply_liger_kernel_to_llama()
+                print("✅ LIGER KERNEL: Liger kernel (LLaMA fallback) successfully applied")
+                logger.info("✅ Liger kernel (LLaMA fallback) successfully applied")
+        except ImportError as e:
+            print(f"⚠️ LIGER KERNEL: Liger kernel import failed: {e}")
+            logger.warning(f"⚠️ Liger kernel import failed: {e}")
+            logger.warning("Continuing without Liger kernel optimizations...")
+        except Exception as e:
+            print(f"⚠️ LIGER KERNEL: Failed to apply Liger kernel: {e}")
+            logger.warning(f"⚠️ Failed to apply Liger kernel: {e}")
+            logger.warning("Continuing without Liger kernel optimizations...")
 
     if args.model_name_or_path:
         if args.use_qlora:
@@ -730,35 +768,6 @@ def main():
         
     if args.use_flash_attn:
         model.to("cuda")  # Explicitly move the model if needed
-
-    # Apply Liger kernel optimizations
-    if args.enable_liger_kernel:
-        logger.info("Applying Liger kernel optimizations...")
-        try:
-            # Apply Liger kernel to the model based on model type
-            if "llama" in args.model_name_or_path.lower() or isinstance(model, LlamaForCausalLM):
-                from liger_kernel.transformers import apply_liger_kernel_to_llama
-                apply_liger_kernel_to_llama()
-                logger.info("✅ Liger kernel for LLaMA successfully applied")
-            elif "mistral" in args.model_name_or_path.lower():
-                from liger_kernel.transformers import apply_liger_kernel_to_mistral
-                apply_liger_kernel_to_mistral()
-                logger.info("✅ Liger kernel for Mistral successfully applied")
-            elif "gemma" in args.model_name_or_path.lower():
-                from liger_kernel.transformers import apply_liger_kernel_to_gemma
-                apply_liger_kernel_to_gemma()
-                logger.info("✅ Liger kernel for Gemma successfully applied")
-            else:
-                # Try the general LLaMA kernel as fallback for similar architectures
-                from liger_kernel.transformers import apply_liger_kernel_to_llama
-                apply_liger_kernel_to_llama()
-                logger.info("✅ Liger kernel (LLaMA fallback) successfully applied")
-        except ImportError as e:
-            logger.warning(f"⚠️ Liger kernel import failed: {e}")
-            logger.warning("Continuing without Liger kernel optimizations...")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to apply Liger kernel: {e}")
-            logger.warning("Continuing without Liger kernel optimizations...")
 
     if args.use_lm_modelling:
         logger.info("Training with LM modelling loss.")
