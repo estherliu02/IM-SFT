@@ -47,6 +47,13 @@ from utils import (
 import deepspeed
 deepspeed.ops.op_builder.CPUAdamBuilder().load()
 
+# Liger kernel import (conditional)
+try:
+    import liger_kernel
+    LIGER_KERNEL_AVAILABLE = True
+except ImportError:
+    LIGER_KERNEL_AVAILABLE = False
+
 logger = get_logger(__name__)
 
 
@@ -310,6 +317,11 @@ def parse_args():
         "--rope_scaling_factor",
         type=float,
         help="Factor to apply if overriding rope scaling config."
+    ),
+    parser.add_argument(
+        "--enable_liger_kernel",
+        action="store_true",
+        help="Enable Liger kernel optimizations for faster and more memory-efficient training.",
     )
 
 
@@ -323,6 +335,11 @@ def parse_args():
             extension = args.train_file.split(".")[-1]
             assert extension in [
                 "json", "jsonl"], "`train_file` should be a json/jsonl file."
+    
+    # Validation for Liger kernel
+    if args.enable_liger_kernel and not LIGER_KERNEL_AVAILABLE:
+        raise ValueError("Liger kernel is not available. Please install it with: pip install liger-kernel")
+    
     return args
 
 
@@ -588,6 +605,16 @@ def main():
 
     # Log on each process the small summary:
     logger.info(f"Training/evaluation parameters {args}")
+    
+    # Log Liger kernel status
+    if args.enable_liger_kernel:
+        if LIGER_KERNEL_AVAILABLE:
+            logger.info("🚀 Liger kernel is enabled and available")
+        else:
+            logger.error("❌ Liger kernel is requested but not available")
+    else:
+        logger.info("⚡ Liger kernel is disabled")
+    
     with open(os.path.join(args.output_dir, "finetune_args.txt"), "w") as f:
         f.write(str(args))
 
@@ -703,6 +730,35 @@ def main():
         
     if args.use_flash_attn:
         model.to("cuda")  # Explicitly move the model if needed
+
+    # Apply Liger kernel optimizations
+    if args.enable_liger_kernel:
+        logger.info("Applying Liger kernel optimizations...")
+        try:
+            # Apply Liger kernel to the model based on model type
+            if "llama" in args.model_name_or_path.lower() or isinstance(model, LlamaForCausalLM):
+                from liger_kernel.transformers import apply_liger_kernel_to_llama
+                apply_liger_kernel_to_llama()
+                logger.info("✅ Liger kernel for LLaMA successfully applied")
+            elif "mistral" in args.model_name_or_path.lower():
+                from liger_kernel.transformers import apply_liger_kernel_to_mistral
+                apply_liger_kernel_to_mistral()
+                logger.info("✅ Liger kernel for Mistral successfully applied")
+            elif "gemma" in args.model_name_or_path.lower():
+                from liger_kernel.transformers import apply_liger_kernel_to_gemma
+                apply_liger_kernel_to_gemma()
+                logger.info("✅ Liger kernel for Gemma successfully applied")
+            else:
+                # Try the general LLaMA kernel as fallback for similar architectures
+                from liger_kernel.transformers import apply_liger_kernel_to_llama
+                apply_liger_kernel_to_llama()
+                logger.info("✅ Liger kernel (LLaMA fallback) successfully applied")
+        except ImportError as e:
+            logger.warning(f"⚠️ Liger kernel import failed: {e}")
+            logger.warning("Continuing without Liger kernel optimizations...")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to apply Liger kernel: {e}")
+            logger.warning("Continuing without Liger kernel optimizations...")
 
     if args.use_lm_modelling:
         logger.info("Training with LM modelling loss.")

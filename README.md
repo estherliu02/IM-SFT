@@ -12,7 +12,7 @@ conda create -n sft python=3.10
 conda activate sft
 pip install torch==2.1.2+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-pip install -r requirements.txt
+pip install -r requirements2.txt
 
 pip uninstall flash-attn -y
 
@@ -43,6 +43,7 @@ accelerate launch \
   --tokenizer_name meta-llama/Llama-3.1-8B-Instruct \
   --use_flash_attn \
   --train_file data/silverpairs_prompt_completion.jsonl \
+  --enable_liger_kernel \
   --max_seq_length 42000 \
   --preprocessing_num_workers 16 \
   --per_device_train_batch_size 1 \
