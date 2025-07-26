@@ -45,9 +45,16 @@ from utils import (
 )
 import deepspeed
 deepspeed.ops.op_builder.CPUAdamBuilder().load()
+# from transformers.integrations import DeepSpeedConfigHF
+# ds_config = DeepSpeedConfigHF("ds_config.json")
 
 logger = get_logger(__name__)
-
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    level=logging.INFO,
+    handlers=[logging.StreamHandler()],
+)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Finetune a transformers model on a causal language modeling task")
@@ -297,12 +304,12 @@ def parse_args():
         action="store_true",
         help="Trust remote code when loading model/tokenizer from HuggingFace."
     )
-    parser.add_argument(
-        "--ddp_timeout",
-        type=int,
-        default=1800,  # default 30 minutes
-        help="Timeout (in seconds) for DistributedDataParallel initialization. Set higher for multi-node training."
-    )
+    # parser.add_argument(
+    #     "--ddp_timeout",
+    #     type=int,
+    #     default=1800,  # default 30 minutes
+    #     help="Timeout (in seconds) for DistributedDataParallel initialization. Set higher for multi-node training."
+    # )
     args = parser.parse_args()
 
     # Sanity checks
@@ -448,6 +455,12 @@ def save_with_accelerate(accelerator, model, tokenizer, output_dir, args):
             output_dir, is_main_process=accelerator.is_main_process, save_function=accelerator.save, state_dict=state_dict
         )
 
+def patched_default_data_collator(features):
+    batch = default_data_collator(features)
+    # Patch to avoid list of numpy.ndarrays -> torch.tensor
+    if isinstance(batch.get("labels", None), list):
+        batch["labels"] = torch.tensor(np.array(batch["labels"]), dtype=torch.int64)
+    return batch
 
 def main():
     args = parse_args()
@@ -460,7 +473,7 @@ def main():
     if args.with_tracking:
         accelerator_log_kwargs["log_with"] = args.report_to
         accelerator_log_kwargs["project_dir"] = args.output_dir
-        accelerator_log_kwargs["timeout"] = timedelta(seconds=args.ddp_timeout)
+        # accelerator_log_kwargs["timeout"] = timedelta(seconds=args.ddp_timeout)
 
     accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps, **accelerator_log_kwargs)
     # Make one log on every process with the configuration for debugging.
@@ -524,6 +537,7 @@ def main():
         
     if args.enable_liger_kernel:
         model_type = getattr(config, "model_type", None)
+        logger.info(f"Applying Liger kernel to model type: {model_type}")
         if model_type == "llama":
             apply_liger_kernel_to_llama()
             logger.info("Liger kernel has been applied to the LLaMA model.")
@@ -573,7 +587,7 @@ def main():
     else:
         logger.info("Training new model from scratch")
         model = AutoModelForCausalLM.from_config(config)
-
+    print(f"before adding special tokens, tokenizer vocab size: {len(tokenizer)}")
     if args.use_lm_modelling:
         logger.info("Training with LM modelling loss.")
         logger.info("Here we concatenate all instruction tuning examples for SFT training.")
@@ -598,7 +612,18 @@ def main():
             assert num_added_tokens == 1, "GPTNeoXTokenizer should only add one special token - the pad_token."
         elif isinstance(tokenizer, GPT2Tokenizer) and isinstance(model, OPTForCausalLM):
             num_added_tokens = tokenizer.add_special_tokens({'unk_token': '<unk>'})
+        
+        # Force vocab inclusion
+        if "<pad>" not in tokenizer.get_vocab():
+            tokenizer.add_tokens(["<pad>"])
 
+        tokenizer.pad_token = "<pad>"
+        model.resize_token_embeddings(len(tokenizer))
+        model.config.pad_token_id = tokenizer.pad_token_id
+        model.pad_token_id = tokenizer.pad_token_id
+
+        logger.info(f"Final pad_token: {tokenizer.pad_token}, pad_token_id: {tokenizer.pad_token_id}")
+    
     if args.padding_side is not None:
         assert args.padding_side in ["left", "right"], "Padding side should be either 'left' or 'right'."
         tokenizer.padding_side = args.padding_side
@@ -722,7 +747,7 @@ def main():
         train_dataloader = DataLoader(
             train_dataset, 
             shuffle=True, 
-            collate_fn=default_data_collator,
+            collate_fn=patched_default_data_collator,
             batch_size=args.per_device_train_batch_size
         )
     else:

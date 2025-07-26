@@ -12,7 +12,7 @@ conda create -n sft python=3.10
 conda activate sft
 pip install torch==2.1.2+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-pip install -r requirements2.txt
+pip install -r requirements.txt
 
 
 
@@ -58,11 +58,11 @@ accelerate launch \
   --model_name_or_path meta-llama/Llama-3.1-8B-Instruct \
   --use_flash_attn \
   --tokenizer_name meta-llama/Llama-3.1-8B-Instruct \
-  --use_slow_tokenizer
+  --use_slow_tokenizer \
   --train_file data/silverpairs_prompt_completion.jsonl \
   --enable_liger_kernel \
   --trust_remote_code \
-  --max_seq_length 42000 \
+  --max_seq_length 12000 \
   --preprocessing_num_workers 16 \
   --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 8 \
@@ -72,7 +72,6 @@ accelerate launch \
   --weight_decay 0.0 \
   --checkpointing_steps 50 \
   --num_train_epochs 6 \
-  --ddp_timeout 180000000 \
   --output_dir output/llama3-8b_im_sft \
   --use_lora \
   --lora_rank 8 \
